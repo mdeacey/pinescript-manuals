@@ -1,0 +1,20 @@
+//@version=6
+strategy("Simple Moving Average Strategy", overlay=true)
+fastLength = input.int(9, title="Fast MA Length")
+slowLength = input.int(21, title="Slow MA Length")
+fastMA = ta.sma(close, fastLength)
+slowMA = ta.sma(close, slowLength)
+
+// Long Entry condition
+longCondition = ta.crossover(fastMA, slowMA)
+if (longCondition)
+    strategy.entry("Long", strategy.long, comment="LONG")
+
+// Short Entry condition
+shortCondition = ta.crossunder(fastMA, slowMA)
+if (shortCondition)
+    strategy.entry("Short", strategy.short, comment="SHORT")
+
+//MA Plots
+plot(fastMA, title="Fast MA", color=color.blue)
+plot(slowMA, title="Slow MA", color=color.orange)

@@ -1,0 +1,114 @@
+//@version=6
+indicator("PAM UR1 DR1 (Forex)", overlay=true)
+
+// User inputs
+atrLength = input.int(14, title="ATR", group="PAM criteria", inline="1")
+bigFlushMultiplier = input.float(1.5, title="Big Flush", step=0.1, group="PAM criteria", inline="2")
+wickSizeThreshold = input.float(0.28, title="EXE close", step=0.01, group="PAM criteria", inline="2")
+smallFlushMultiplier = input.float(0.9, title="Small Flush", step=0.1, group="PAM criteria", inline="3")
+smallFlushWickThreshold = input.float(30, title="Flush wick %", step=0.01, group="PAM criteria", inline="3")
+balance = input.float(10000, title="Capital", group="Calculator", inline="2")
+riskPercent = input.float(1, title="Risk %", group="Calculator", inline="2")
+
+// User inputs for display preferences
+showAtrPips = input.bool(true, title="ATR Pips", group="Display Options", inline="3")
+showLotSize = input.bool(true, title="Lot Size", group="Display Options", inline="3")
+showCapital = input.bool(true, title="Capital", group="Display Options", inline="3")
+
+// Calculate ATR
+atrValue = ta.atr(atrLength)
+previousATR = atrValue[1]
+
+// Calculate the total candle range (high - low)
+candleRange = high - low
+wickSize = (high - close) + (open - low)
+
+// Identify Big Flush candles based on ATR multiplier
+isBigFlushBullish = close > open and (close - open) >= (previousATR * bigFlushMultiplier)
+isBigFlushBearish = close < open and (open - close) >= (previousATR * bigFlushMultiplier)
+
+// Function to check wick size criteria
+isSmallWick(candleIndex) =>
+    ((high[candleIndex] - math.max(close[candleIndex], open[candleIndex])) + (math.min(close[candleIndex], open[candleIndex]) - low[candleIndex])) <= ((high[candleIndex] - low[candleIndex]) * smallFlushWickThreshold)
+
+// Identify Small Flush conditions (3 consecutive candles with ATR > smallFlushMultiplier and wick size condition)
+isSmallFlushBullish = (close > open and close[1] > open[1] and close[2] > open[2]) and 
+                      (atrValue > previousATR * smallFlushMultiplier and 
+                      atrValue[1] > previousATR * smallFlushMultiplier and 
+                      atrValue[2] > previousATR * smallFlushMultiplier) and
+                      isSmallWick(0) and isSmallWick(1) and isSmallWick(2)
+
+isSmallFlushBearish = (close < open and close[1] < open[1] and close[2] < open[2]) and 
+                      (atrValue > previousATR * smallFlushMultiplier and 
+                      atrValue[1] > previousATR * smallFlushMultiplier and 
+                      atrValue[2] > previousATR * smallFlushMultiplier) and
+                      isSmallWick(0) and isSmallWick(1) and isSmallWick(2)
+
+// Variables to track flush candle index and direction
+var int flushBarIndex = na
+var float exeAtr = na  // Store ATR value for EXE candle
+var bool flushIsBullish = false
+var bool flushIsBearish = false
+
+// Store flush candle bar index and ATR value
+if isBigFlushBullish or isBigFlushBearish or isSmallFlushBullish or isSmallFlushBearish
+    flushBarIndex := bar_index
+    flushIsBullish := isBigFlushBullish or isSmallFlushBullish
+    flushIsBearish := isBigFlushBearish or isSmallFlushBearish
+
+// Define pinbar criteria for EXE candle
+isPinBarUp(close, open, low, high, wickSizeThreshold) =>
+    open > close and (close - low) <= (candleRange * wickSizeThreshold)
+
+isPinBarDown(close, open, low, high, wickSizeThreshold) =>
+    close > open and (high - close) <= (candleRange * wickSizeThreshold)
+
+// Determine SL multiplier based on currency pair
+getSlMultiplier(symbol) =>
+    str.contains(symbol, "JPY") ? 100 : str.contains(symbol, "XAUUSD") ? 10 : str.contains(symbol, "XAGUSD") ? 100 : 10000
+
+// Lot size calculation function
+calculateLotSize(balance, riskPercent, slPips) =>
+    riskAmount = balance * (riskPercent / 100)
+    lotSize = riskAmount / (slPips * 10)  // Divide by 10 for pip value in forex
+    math.round(lotSize, 2)
+
+// Check EXE criteria only for the next 5 bars after a flush candle
+if not na(flushBarIndex) and bar_index > flushBarIndex and bar_index <= flushBarIndex + 5
+    if flushIsBullish and isPinBarUp(close, open, low, high, wickSizeThreshold)
+        exeAtr := atrValue
+        slMultiplier = getSlMultiplier(syminfo.ticker)
+        slPips = exeAtr * slMultiplier
+        lotSize = calculateLotSize(balance, riskPercent, slPips)
+        
+        // Build label text based on user preferences
+        labelText = ""
+        labelText += showAtrPips ? str.tostring(slPips, "#.##") + " pips" : ""
+        labelText += showLotSize ? "\n" + str.tostring(lotSize) + " lots" : ""
+        labelText += showCapital ? "\n $" + str.tostring(balance) : ""
+
+        label.new(bar_index, high + ta.atr(atrLength) * 0.5, 
+                  labelText, 
+                  color=color.white, textcolor=color.black, size=size.small, style=label.style_label_down)
+
+    if flushIsBearish and isPinBarDown(close, open, low, high, wickSizeThreshold)
+        exeAtr := atrValue
+        slMultiplier = getSlMultiplier(syminfo.ticker)
+        slPips = exeAtr * slMultiplier
+        lotSize = calculateLotSize(balance, riskPercent, slPips)
+
+        // Build label text based on user preferences
+        labelText = ""
+        labelText += showAtrPips ? str.tostring(slPips, "#.##") + " pips" : ""
+        labelText += showLotSize ? "\n" + str.tostring(lotSize) + " lots" : ""
+        labelText += showCapital ? "\n $" + str.tostring(balance) : ""
+
+        label.new(bar_index, low - ta.atr(atrLength) * 0.5, 
+                  labelText, 
+                  color=color.yellow, textcolor=color.black, size=size.small, style=label.style_label_up)
+
+// Highlight the flush candle
+barcolor(isBigFlushBullish ? color.white : na, title="Big Up Flush")
+barcolor(isBigFlushBearish ? color.yellow : na, title="Big Down Flush")
+barcolor(isSmallFlushBullish ? color.gray: na, title="Small Up Flush")
+barcolor(isSmallFlushBearish ? color.orange : na, title="Small Down Flush")

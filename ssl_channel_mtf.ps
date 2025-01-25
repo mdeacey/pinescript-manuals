@@ -1,0 +1,60 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © traderharikrishna
+
+//@version=6
+indicator("SSL Channel MTF",overlay = true)
+mtf=input.timeframe('240',"MTF")
+matype=input.string("SMA",title = "MA type",options=['SMA','EMA'])
+//src=input.source(close,"source")
+malen1=input.int(5,'SSL Length')
+//malen2=input.int(5,'MA2')
+len3=input.int(5,'candle length')
+showsslc=true
+
+m1=matype=="SMA"?ta.sma(high,malen1):ta.ema(high,malen1)
+m2=matype=="SMA"?ta.sma(low,malen1):ta.ema(low,malen1)
+//m3=matype=="SMA"?ta.sma(src,malen3):ta.ema(src,malen3)
+
+
+smaHigh=request.security(syminfo.tickerid,mtf,m1,gaps=barmerge.gaps_off,lookahead = barmerge.lookahead_on)
+smaLow=request.security(syminfo.tickerid,mtf,m2,gaps=barmerge.gaps_off,lookahead = barmerge.lookahead_on)
+cl=request.security(syminfo.tickerid,mtf,close,gaps=barmerge.gaps_off,lookahead = barmerge.lookahead_on)
+//smaHigh=ta.sma(high, len2)
+//smaLow=ta.sma(low, len2)
+float Hlv = na
+Hlv := cl > smaHigh ? 1 : cl < smaLow ? -1 : Hlv[1]
+sslDown = Hlv < 0 ? smaHigh: smaLow
+sslUp   = Hlv < 0 ? smaLow : smaHigh
+sslc=sslUp>sslDown?color.green:color.red
+avg=math.avg(sslUp,sslDown)
+//avg1=math.avg(avg,sslUp)
+//avg2=math.avg(avg,sslDown)
+plot(sslUp, color=color.green)
+plot(sslDown, color=color.red)
+plot(avg, color = color.yellow)
+//plot(avg1, color = #f8f1b3)
+//plot(avg2, color = #f8f1b3)
+[op,hi,lo,co]=request.security(syminfo.tickerid,'',[open,high,low,close],gaps=barmerge.gaps_off,lookahead = barmerge.lookahead_on)
+smaHigha=ta.sma(hi, len3)
+smaLowa=ta.sma(lo, len3)
+smaOpen=ta.sma(op, len3)
+smaClose=ta.sma(co, len3)
+cancol=smaClose>smaOpen?color.teal:color.red
+plotcandle(showsslc?smaOpen:na,showsslc?smaHigha:na,showsslc?smaLowa:na,showsslc?smaClose:na,color=cancol,bordercolor = cancol,wickcolor = cancol)
+barcolor(cancol)
+buy=ta.crossover(sslUp,sslDown)
+sell=ta.crossunder(sslUp,sslDown)
+alertcondition(buy,"ssl buy","ssl buy")
+alertcondition(sell,"ssl sell","ssl sell")
+alertcondition(buy or sell,"ssl buy/sell","ssl buy/sell")
+plotshape(buy?smaLow:na,"buy",style=shape.labelup,text='Buy',size = size.normal,location = location.absolute,textcolor = color.white, color = color.lime)
+plotshape(sell?smaHigh:na,"sell",style=shape.labeldown,text='Sell',size = size.normal,location = location.absolute,textcolor = color.white, color = color.red)
+
+candleup=ta.crossover(smaClose,smaOpen)
+candledown=ta.crossunder(smaClose,smaOpen)
+alertcondition(candleup,"MA candle up","MA candle up")
+alertcondition(candledown,"MA candle down","MA candle down")
+alertcondition(candleup or candledown,"MA candle up/down","MA candle up/down")
+
+plotshape(candleup?smaLowa:na,"",style=shape.labelup,text='',size = size.tiny,location = location.absolute,textcolor = color.white, color = color.lime)
+plotshape(candledown?smaHigha:na,"",style=shape.labeldown,text='',size = size.tiny,location = location.absolute,textcolor = color.white, color = color.red)

@@ -1,0 +1,64 @@
+//@version=6
+
+indicator("TVMC - Composite Indicator with Technical Ratings", shorttitle="TVMC", overlay=false)
+
+import TradingView/TechnicalRating/3 as rating
+
+int macdFastLen  = input.int(12, "MACD Fast Length")
+int macdSlowLen  = input.int(26, "MACD Slow Length")
+int macdSignalLen= input.int(9,  "MACD Signal Length")
+int rsiLen       = input.int(14, "RSI Length")
+int volSmaLen    = input.int(20, "Volume SMA Length")
+int atrLen       = input.int(14, "ATR Length")
+int atrSmaLen    = input.int(14, "ATR SMA Length")
+float wTrend     = input.float(0.4, "Weight Trend (MACD)")
+float wMom       = input.float(0.4, "Weight Momentum (RSI)")
+float wVol       = input.float(0.2, "Weight Volume factor")
+res = input.timeframe("", title="Indicator Timeframe")
+ratingSignal = input.string(defval="All", title="Rating is based on", options=["MAs", "Oscillators", "All"])
+
+float macdFastMA = ta.ema(close, macdFastLen)
+float macdSlowMA = ta.ema(close, macdSlowLen)
+float macdVal    = macdFastMA - macdSlowMA
+float macdSignal = ta.ema(macdVal, macdSignalLen)
+float macdHist   = macdVal - macdSignal
+float macdStdev  = ta.stdev(macdHist, 100)
+float macdNorm   = macdStdev != 0.0 ? (macdHist / (3.0 * macdStdev)) : 0.0
+float TC         = math.max(-1.0, math.min(macdNorm, 1.0))
+
+float rsiVal   = ta.rsi(close, rsiLen)
+float MC       = (rsiVal - 50.0) / 50.0
+float momClamp = math.max(-1.0, math.min(MC, 1.0))
+
+float volSma   = ta.sma(volume, volSmaLen)
+float volRatio = volSma > 0 ? (volume / volSma) : 1
+float v        = (volRatio - 1.0)
+float VC       = math.max(0.0, math.min(v, 1.0))
+
+float currentATR = ta.atr(atrLen)
+float meanATR    = ta.sma(currentATR, atrSmaLen)
+float volatRatio = meanATR > 0 ? currentATR / meanATR : 1
+float VF        = math.max(0.5, math.min(volatRatio / 2.0, 1.0))
+
+float TVMC_raw  = (wTrend * TC + wMom * momClamp + wVol * VC) * VF
+float TVMC_100  = TVMC_raw * 100
+
+[ratingTotalCurrent, ratingOtherCurrent, ratingMACurrent] = request.security(syminfo.tickerid, res, rating.calcRatingAll())
+getSignal(ratingTotal, ratingOther, ratingMA) =>
+    if ratingSignal == "MAs"
+        ratingMA
+    else if ratingSignal == "Oscillators"
+        ratingOther
+    else
+        ratingTotal
+tradeSignal = getSignal(ratingTotalCurrent, ratingOtherCurrent, ratingMACurrent)
+
+color lineColor = tradeSignal > 0.1 ? color.green : tradeSignal < -0.1 ? color.red : color.orange
+
+plot0 = plot(0, title="Zero Line", color=color.new(color.gray, 100))
+fillTransparency = 100 - math.abs(tradeSignal) * 90 
+fill(plot(TVMC_100, title="TVMC with Rating", color=lineColor, linewidth=2), plot0, color=color.new(lineColor, fillTransparency))
+
+hline(30, "Upper Zone", color=color.new(color.green, 60))
+hline(0, "Upper Zone", color=color.new(color.white, 60))
+hline(-30, "Lower Zone", color=color.new(color.red, 60))

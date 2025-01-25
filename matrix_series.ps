@@ -1,0 +1,176 @@
+//@version=6
+
+indicator('Matrix Series and Vix Fix with VWAP CCI and QQE Signals', shorttitle = 'Advanced Matrix', precision = 1)
+//____________________________________________________________
+// Matrix Series"  
+//____________________________________________________________
+nn = input(5, 'Smoother')
+
+//--Sup/Res Detail
+SupResPeriod = input(50)
+SupResPercentage = input(100)
+PricePeriod = input(16)
+ob = input(200, 'Overbought')
+os = input(-200, 'Oversold')
+OBOS = input(false, 'Show OB/OS')
+dynamic = input(true, 'Dynamic zones')
+
+ys1 = (high + low + close * 2) / 4
+rk3 = ta.ema(ys1, nn)
+rk4 = ta.stdev(ys1, nn)
+rk5 = (ys1 - rk3) * 200 / rk4
+rk6 = ta.ema(rk5, nn)
+up = ta.ema(rk6, nn)
+down = ta.ema(up, nn)
+Oo = up < down ? up : down
+Hh = Oo
+Ll = up < down ? down : up
+Cc = Ll
+
+coral = #ffa703
+lavender = color.rgb(29, 225, 255)
+amber = color.rgb(255, 170, 0)
+redorange = #ff9500
+chartreuse = color.new(#80FF00, 50)
+
+vcolor = Oo > Cc ? coral : up > down ? lavender : coral
+plotcandle(Oo, Hh, Ll, Cc, title = 'Matrix Candle', color = vcolor)
+
+//-------S/R Zones------
+Lookback = SupResPeriod
+PerCent = SupResPercentage
+Pds = PricePeriod
+
+Value1 = ta.cci(close, Pds)
+Value2 = ta.highest(Value1, Lookback)
+Value3 = ta.lowest(Value1, Lookback)
+Value4 = Value2 - Value3
+Value5 = Value4 * (PerCent / 100)
+ResistanceLine = Value3 + Value5
+SupportLine = Value2 - Value5
+plot(dynamic ? ResistanceLine : na, title = 'Resistance Line', color = color.new(coral, 0))
+plot(dynamic ? SupportLine : na, title = 'Support Line', color = lavender)
+
+//--Overbought/Oversold/Warning Detail
+h01 = ta.highest(up, 1) + 20
+h02 = ta.highest(down, 1) + 20
+l01 = ta.lowest(down, 1) - 20
+l02 = ta.lowest(up, 1) - 20
+UPshape = up > ob and up > down ? h01 : up > ob and up < down ? h02 : na
+DOWNshape = down < os and up > down ? l01 : down < os and up < down ? l02 : na
+plot(UPshape, title = 'UP Shape', style = plot.style_circles, color = amber, linewidth = 4)
+plot(DOWNshape, title = 'DOWN Shape', style = plot.style_circles, color = amber, linewidth = 4)
+x1 = OBOS ? ob : na
+x2 = OBOS ? os : na
+hline(x1)
+hline(x2)
+
+//____________________________________________________________________________________________
+// Based on "Williams Vix Fix"  
+//____________________________________________________________________________________________
+shows_Vix_Fix = input(false, title = '═════════ Show Vix Fix ═════════')
+pd = input(22, title = 'LookBack Period Standard Deviation High')
+bbl = input(20, title = 'Bolinger Band Length')
+mult = input.float(2.0, title = 'Bollinger Band Standard Devaition Up', minval = 1, maxval = 5)
+lb = input(50, title = 'Look Back Period Percentile High')
+ph = input(.85, title = 'Highest Percentile - 0.90=90%, 0.95=95%, 0.99=99%')
+swvfm = input.float(1.0, title = 'Multiplier (Suggested values 0.5 to 2)', minval = 0.5, maxval = 2)
+
+// Williams Vix Fix Formula
+wvf = (ta.highest(close, pd) - low) / ta.highest(close, pd) * 100
+
+sDev = mult * ta.stdev(wvf, bbl)
+midLine = ta.sma(wvf, bbl)
+upperBand = midLine + sDev
+rangeHigh = ta.highest(wvf, lb) * ph
+
+// Criteria
+str = 3 // Entry Price Action Strength--Close > X Bars Back---Default=3, minval=1, maxval=9
+ltLB = 40 // Long-Term Look Back Current Bar Has To Close Below This Value OR Medium Term--Default=40, minval=25, maxval=99
+mtLB = 14 // Medium-Term Look Back Current Bar Has To Close Below This Value OR Long Term--Default=14, minval=10, maxval=20
+upRange = low > low[1] and close > high[1]
+upRange_Aggr = close > close[1] and close > open[1]
+// Filtered Criteria
+filtered = (wvf[1] >= upperBand[1] or wvf[1] >= rangeHigh[1]) and wvf < upperBand and wvf < rangeHigh
+filtered_Aggr = (wvf[1] >= upperBand[1] or wvf[1] >= rangeHigh[1]) and not(wvf < upperBand and wvf < rangeHigh)
+// Alerts Criteria
+alert1 = upRange and close > close[str] and (close < close[ltLB] or close < close[mtLB]) and filtered ? 1 : 0
+alert2 = upRange_Aggr and close > close[str] and (close < close[ltLB] or close < close[mtLB]) and filtered_Aggr ? 1 : 0
+
+color_VF = wvf >= upperBand or wvf >= rangeHigh ? color.lime : color.gray
+
+swvfm_precent = swvfm * (ResistanceLine - SupportLine) / (2.2 * rangeHigh)
+
+plot(shows_Vix_Fix ? wvf * -1 * swvfm_precent : na, title = 'Williams Vix Fix', style = plot.style_columns, linewidth = 4, color = color_VF)
+shows_signal = input(true, title = 'Show Signals')
+bgcolor(shows_signal and bool(alert1) ? #15FF00 : na, title = 'Vix Long 1')
+plotshape(shows_signal and bool(alert1), title = 'Vix Long 1', color = color.new(#15FF00, 0), style = shape.triangleup, location = location.bottom)
+bgcolor(shows_signal and bool(alert2) ? #306030 : na, title = 'Vix Long 2')
+plotshape(shows_signal and bool(alert2), title = 'Vix Long 2', color = color.new(color.teal, 0), style = shape.triangleup, location = location.bottom)
+
+if bool(alert1)
+    alert("BUY MATRIX", alert.freq_once_per_bar_close)
+//_____________________________________________________________
+// Based on "QQE signals"  
+//_____________________________________________________________
+shows_QQE = input(false, title = '═════════ Show QQE Signals ═════════')
+
+RSI_Period = input(14, title = 'RSI Length')
+SF = input(5, title = 'RSI Smoothing')
+QQE = input(4.238, title = 'Fast QQE Factor')
+ThreshHold = input(10, title = 'Thresh-hold')
+
+Wilders_Period = RSI_Period * 2 - 1
+
+Rsi = ta.rsi(close, RSI_Period)
+RsiMa = ta.ema(Rsi, SF)
+AtrRsi = math.abs(RsiMa[1] - RsiMa)
+MaAtrRsi = ta.ema(AtrRsi, Wilders_Period)
+dar = ta.ema(MaAtrRsi, Wilders_Period) * QQE
+
+longband = 0.0
+shortband = 0.0
+trend = 0
+
+DeltaFastAtrRsi = dar
+RSIndex = RsiMa
+newshortband = RSIndex + DeltaFastAtrRsi
+newlongband = RSIndex - DeltaFastAtrRsi
+longband := RSIndex[1] > longband[1] and RSIndex > longband[1] ? math.max(longband[1], newlongband) : newlongband
+shortband := RSIndex[1] < shortband[1] and RSIndex < shortband[1] ? math.min(shortband[1], newshortband) : newshortband
+cross_1 = ta.cross(longband[1], RSIndex)
+trend := ta.cross(RSIndex, shortband[1]) ? 1 : cross_1 ? -1 : nz(trend[1], 1)
+FastAtrRsiTL = trend == 1 ? longband : shortband
+
+// Find all the QQE Crosses
+QQExlong = 0
+QQExlong := nz(QQExlong[1])
+QQExshort = 0
+QQExshort := nz(QQExshort[1])
+QQExlong := FastAtrRsiTL < RSIndex ? QQExlong + 1 : 0
+QQExshort := FastAtrRsiTL > RSIndex ? QQExshort + 1 : 0
+
+// Conditions
+qqeLong = QQExlong == 1 ? FastAtrRsiTL[1] - 50 : na
+qqeShort = QQExshort == 1 ? FastAtrRsiTL[1] - 50 : na
+
+// Plotting
+plotshape(shows_QQE and bool(qqeLong), title = 'QQE Long', color = chartreuse, style = shape.labelup, location = location.bottom, size = size.tiny, text = 'QQE', textcolor = color.new(color.white, 25))
+plotshape(shows_QQE and bool(qqeShort), title = 'QQE Short', color = color.new(redorange, 25), style = shape.labeldown, location = location.top, size = size.tiny, text = 'QQE', textcolor = color.new(color.white, 25))
+
+plot(ta.sma(close, 200), "SMA200", color.white, 2, force_overlay = true)
+//___________________________________________________________________________
+// VWAP CCI Signals
+//___________________________________________________________________________
+shows_VCCI = input(false, title = '═════════ Show VWAP CCI Signals ═════════')
+// Inputs
+nro = input.int(14, title = 'Length', minval = 1)
+// Calculate vwap cci
+cci = (ta.vwap - ta.alma(ta.vwap, nro, 0.85, 6.0)) / (0.015 * ta.dev(ta.vwap, nro))
+
+// Define long and short entry signal
+long = ta.crossover(cci, -200)
+short = ta.crossunder(cci, 200)
+
+plotshape(shows_VCCI and long, title = 'VWAP CCI Long', color = chartreuse, style = shape.labelup, location = location.bottom, size = size.tiny, text = 'VCCI', textcolor = color.new(color.white, 25))
+plotshape(shows_VCCI and short, title = 'VWAP CCI Short', color = color.new(redorange, 25), style = shape.labeldown, location = location.top, size = size.tiny, text = 'VCCI', textcolor = color.new(color.white, 25))

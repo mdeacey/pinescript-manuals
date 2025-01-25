@@ -1,0 +1,42 @@
+//@version=6
+indicator("Order Flow Zonas", overlay=true)
+
+// --- Configuración de inputs ---
+vol_multiplier = input.float(2.0, title="Multiplicador de Volumen", minval=1.0)
+pivot_length = input.int(5, title="Sensibilidad de Pivotes", minval=1)
+atr_length = input.int(14, title="Período ATR para Velas Clave")
+atr_multiplier = input.float(1.5, title="Multiplicador ATR para Velas Clave")
+
+// --- Cálculo de Volumen Promedio ---
+vol_avg = ta.sma(volume, 20)
+
+// --- Cálculo de ATR ---
+atr = ta.atr(atr_length)
+
+// --- Detectar Velas Clave (High Volume + Momentum) ---
+high_volume = volume > vol_avg * vol_multiplier
+large_candle = math.abs(close - open) > atr * atr_multiplier
+bullish_candle = close > open
+bearish_candle = close < open
+
+// --- Condiciones para zonas de interés ---
+bullish_zone = high_volume and large_candle and bullish_candle
+bearish_zone = high_volume and large_candle and bearish_candle
+
+// --- Detectar Puntos de Pivote ---
+pivot_high = ta.pivothigh(high, pivot_length, pivot_length)
+pivot_low = ta.pivotlow(low, pivot_length, pivot_length)
+
+// --- Dibujar Zonas ---
+if (bullish_zone)
+    label.new(bar_index, low, "Bullish Zone", style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if (bearish_zone)
+    label.new(bar_index, high, "Bearish Zone", style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// --- Mostrar Pivotes ---
+if (not na(pivot_high))
+    line.new(x1=bar_index[pivot_high], y1=high[pivot_high], x2=bar_index, y2=high[pivot_high], color=color.red, width=1, style=line.style_dotted)
+
+if (not na(pivot_low))
+    line.new(x1=bar_index[pivot_low], y1=low[pivot_low], x2=bar_index, y2=low[pivot_low], color=color.green, width=1, style=line.style_dotted)
